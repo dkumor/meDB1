@@ -1,10 +1,10 @@
 #!/usr/bin/python2
-portnum = 8000
+portnum = 443
 
 
 from twisted.internet import ssl, reactor
 from twisted.internet.protocol import Factory, Protocol
-from twisted.web.server import Site
+from twisted.web.server import Site, Session
 from twisted.web.static import File
 from twisted.web.resource import Resource
 
@@ -51,6 +51,9 @@ def auth(sid,token):
     print "AUTH FAIL:",token
     return None
 
+class WeekSession(Session):
+    sessionTimeout = 60*60*24*7
+    
 class Login(Resource):
     def render_GET(self,request):
         print request.args
@@ -122,7 +125,9 @@ if __name__ == '__main__':
     
     meDB.putChild("mksession",Login())
     meDB.putChild("q",Query())
-    reactor.listenSSL(8000, Site(meDB),
+    s=Site(meDB)
+    s.sessionFactory = WeekSession
+    reactor.listenSSL(portnum,s ,
                       ssl.DefaultOpenSSLContextFactory(
             'keys/server.key', 'keys/server.crt'))
     print "READY"
