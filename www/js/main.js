@@ -45,8 +45,42 @@ function gup(nam) {
     else
         return results[1];
 }
+function remake() {
+   $.get("/q", { key: gup("session") }, function (data) {
+        console.log(data);
+        data = JSON.parse(data);
+        tb = data.points;
 
-$(".row").prepend('<div class="dataframe col-xs-12 col-sm-6 col-lg-4">\
+
+        
+        
+
+
+        addhtml = "";
+        for (i = 0; i < tb.length; ++i) {
+            utctime = new Date(tb[i].time + " GMT");
+            timestring = (utctime.getMonth() + 1) + "/" + utctime.getDate() + "/" + utctime.getFullYear() + " " + utctime.getHours() + ":" + utctime.getMinutes();
+            addhtml += "<tr><td>" + timestring + "</td><td>" + tb[i].label + "</td><td>" + tb[i].value + "</td></tr>"
+        }
+        recentData_ = recentData.replace("{{ELEMENTS}}", addhtml)
+        recentData_ = recentData_.replace("{{TID}}", "resultTable")
+        
+
+
+        addhtml = '<hr />'
+
+        labels = data.labels;
+        if (labels.length == 0) {
+            addValues_ = addValues.replace("{{ELEMENTS}}", "")
+        } else {
+            for (i = 0; i < labels.length; ++i) {
+                addhtml += '<form id="frm' + i + '" role="form" class="form-inline" onsubmit="return addValue(\'#frm' + i + '\')" ><div class="form-group"><input type="text" class="form-control input_label" value="' + labels[i] + '"/> <input type="text" class="form-control input_value" placeholder="Value..."/></div> <button type="submit" class="btn btn-default">Add</button></form>';
+            }
+            addValues_ = addValues.replace("{{ELEMENTS}}", addhtml)
+        }
+        
+        $(".row").html("");
+        $(".row").prepend('<div class="dataframe col-xs-12 col-sm-6 col-lg-4">\
             <div class="pg color_red">\
             <h4>Warning:</h4>\
             <p>The database used to store data is not encrypted at this time. Do not store any personal\
@@ -55,46 +89,31 @@ information, or data that you wouldn\'t want people to know.</p>\
 <div class="dataframe col-xs-12 col-sm-6 col-lg-4">\
 <div class="pg color_yellow">\
 <h4>Note:</h4>\
-<p>The search bar is not functional at this time. Furthermore, data may be lost as changes are made to the software and databases. Just be aware of that.</p></div></div>')
-
-$.get("/q", { key: gup("session") }, function (data) {
-    console.log(data);
-    data = JSON.parse(data)
-    tb = data.points;
-    addhtml = "";
-    for (i = 0; i < tb.length; ++i) {
-        addhtml += "<tr><td>"+tb[i].time+"</td><td>"+tb[i].label+"</td><td>"+tb[i].value+"</td></tr>"
-    }
-    recentData = recentData.replace("{{ELEMENTS}}",addhtml)
-    recentData = recentData.replace("{{TID}}", "resultTable")
-    $(".row").prepend(recentData);
+<p>The search bar is not functional at this time. Furthermore, data may be lost as changes are made to the software and databases. Just be aware of that.</p></div></div>');
 
 
-    addhtml = '<hr />'
-               
-    labels = data.labels;
-    if (labels.length == 0) {
-        addValues = addValues.replace("{{ELEMENTS}}", "")
-    } else {
-        for (i = 0; i < labels.length; ++i) {
-            addhtml += '<form id="frm' + i + '" role="form" class="form-inline" onsubmit="return addValue(\'#frm' + i + '\')" ><div class="form-group"><input type="text" class="form-control input_label" value="' + labels[i] + '"/> <input type="text" class="form-control input_value" placeholder="Value..."/></div> <button type="submit" class="btn btn-default">Add</button></form>';
-        }
-        addValues = addValues.replace("{{ELEMENTS}}", addhtml)
-    }
-    $(".row").prepend(addValues);
-});
+
+        $(".row").prepend(recentData_);
+        $(".row").prepend(addValues_);
+    });
+}
+
 
 function addValue(vid) {
-    label = $(vid + " .input_label").val()
-    value = $(vid + " .input_value").val()
+    label = $(vid + " .input_label").val();
+    value = $(vid + " .input_value").val();
     console.log("Add label="+label+" value="+value)
-    console.log()
+    
     $.post("/q", { key: gup("session"), label: label, value: value }, function (data) {
         console.log("Server response:" + data);
+        if (vid == "#mainform") {
+            $(vid + " .input_label").val("")
+        }
+        $(vid + " .input_value").val("")
+        remake();
     });
-    if (vid == "#mainform") {
-        $(vid + " .input_label").val("")
-    }
-    $(vid + " .input_value").val("")
+    
     return false;
 }
+
+remake();

@@ -69,6 +69,7 @@ class Login(Resource):
                 sesh = str(request.getSession().uid)
                 c.execute("INSERT INTO auth VALUES (?,?,?)",(request.args["user"][0],key,sesh))
                 print request.args["user"][0],": login"
+                db.commit()
                 return key
             print "AUTH FAIL:",request.args["user"][0]
             return ""
@@ -86,7 +87,7 @@ class Query(Resource):
             points = []
             for row in result:
                 points.append({"time": row[0], "label": row[1], "value": row[2]})
-            result = c.execute("SELECT label FROM categories WHERE (user=?) ORDER BY number DESC LIMIT ?",(usr,5))
+            result = c.execute("SELECT label FROM categories WHERE (user=?) ORDER BY number DESC LIMIT ?",(usr,6))
             labels = []
             for row in result:
                 labels.append(row[0])
