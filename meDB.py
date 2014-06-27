@@ -1,137 +1,199 @@
 #!/usr/bin/python2
-portnum = 443
 
+port = 8000
+isTesting = True
 
-from twisted.internet import ssl, reactor
-from twisted.internet.protocol import Factory, Protocol
-from twisted.web.server import Site, Session
-from twisted.web.static import File
-from twisted.web.resource import Resource
-
-import cgi		#Allows for sending posts to and fro
-import sqlite3	#All website info is stored in a sqlite database
-import hashlib	#For sending hashed IPs as identifiers
-import json		#For wrapping up the sent data in json format
+import sqlite3
 import uuid
+import hashlib
 
-"""
-Database setup - the database is created if none exists and is initialized to be
-ready for use
-"""
-db = None
+import os
+import stat
+import mimetypes
+import datetime
+import time
+import email
 
-try:	#Check for existence of the database
-    db = open('./database.db','r')
-    db.close()
-    db = sqlite3.connect('./database.db')
-    cur = db.cursor()
+import tornado.httpserver
+import tornado.websocket
+import tornado.httpserver
+import tornado.ioloop
+import tornado.web
+from tornado.web import HTTPError
+
+auth = None
+
+try:
+    auth = open('./auth.db','r')
+    auth.close()
+    auth = sqlite3.connect('./auth.db')
+    cur = auth.cursor()
     cur.execute("DELETE FROM auth")
     cur.close()
 except:
-    #The database does not exist
-    print "CREATING DATABASE"
-    db = sqlite3.connect('./database.db')
-    cur = db.cursor()
+    print "Creating Database"
+    auth = sqlite3.connect('./auth.db')
+    cur = auth.cursor()
     cur.execute('CREATE TABLE users (email text, password text, salt text)')
-    cur.execute('CREATE TABLE auth (user text, token text, session text)')
-    cur.execute('CREATE TABLE data (user text, label text, value text, time text)')
-    cur.execute('CREATE TABLE categories (user text, label text, number integer, time text)')
-    cur.execute("INSERT INTO users VALUES ('daniel@dkumor.com','675ed75f53f30ccc543a204182fe847daf1b8d51fe205341d5d43ad156d7427c9ee77466a12bd61fc7ae4bce7e79e7696f5b7f9ad28b665408277076c20a9beb','f9c16b026cd5404cb8ee78bfd4146736')")
-    db.commit()
-    cur.close()
-
-def auth(sid,token):
-    global db
-    c = db.cursor()
-    c.execute('SELECT user FROM auth WHERE (token=? AND session=?)',(token,sid))
-    usr = c.fetchone()
-    c.close()
-    if (usr):
-        return usr[0]
-    print "AUTH FAIL:",token
-    return None
-
-class WeekSession(Session):
-    sessionTimeout = 60*60*24*7
+    cur.execute('CREATE TABLE auth (user text, session text)')
     
-class Login(Resource):
-    def render_GET(self,request):
-        print request.args
-        return "LOL"
-    def render_POST(self,request):
-        global db
-        c = db.cursor()
-        c.execute('SELECT * FROM users WHERE (email=?)',(request.args["user"][0],))
+     #Create the user DANIEL
+    cur.execute("INSERT INTO users VALUES ('daniel@dkumor.com','675ed75f53f30ccc543a204182fe847daf1b8d51fe205341d5d43ad156d7427c9ee77466a12bd61fc7ae4bce7e79e7696f5b7f9ad28b665408277076c20a9beb','f9c16b026cd5404cb8ee78bfd4146736')")
+    
+    
+    auth.commit()
+    cur.close()
+class BaseHandler(tornado.web.RequestHandler):
+    def get_current_user(self):
+        if (isTesting): return "daniel@dkumor.com"
+        global auth
+        
+        sesh = self.get_secure_cookie("session")
+        if (sesh):
+            c = auth.cursor()
+            c.execute('SELECT user FROM auth WHERE (session=?)',(sesh,))
+            usr = c.fetchone()
+            if (usr):
+                return usr[0]
+            
+        return None
+
+class MainHandler(BaseHandler):
+    def initialize(self):
+        self.webapp = open("./app/app.html","r").read()
+        
+    @tornado.web.authenticated
+    def get(self):
+        self.write(self.webapp)
+    
+    @tornado.web.authenticated
+    def post(self):
+        self.write("POST is not available at this time")
+
+class LoginHandler(BaseHandler):
+    def initialize(self):
+        self.loginpage = open("./app/login.html","r").read()
+    def get(self):
+        self.set_secure_cookie("session",str(uuid.uuid4()))
+        self.write(self.loginpage)
+    def post(self):
+        global auth
+        
+        if not (self.get_secure_cookie("session")):
+            self.set_secure_cookie("session",str(uuid.uuid4()))
+        
+        usr = self.get_argument("user")
+        c = auth.cursor()
+        c.execute('SELECT * FROM users WHERE (email=?)',(usr,))
         row = c.fetchone()
         if (row):
-            if (row[1]==hashlib.sha512(request.args["password"][0]+ row[2]).hexdigest()):
-                key = str(uuid.uuid4())
-                sesh = str(request.getSession().uid)
-                c.execute("INSERT INTO auth VALUES (?,?,?)",(request.args["user"][0],key,sesh))
-                print request.args["user"][0],": login"
-                db.commit()
-                return key
-            print "AUTH FAIL:",request.args["user"][0]
-            return ""
+            if (row[1]==hashlib.sha512(self.get_argument("password")+ row[2]).hexdigest()):
+                sesh = self.get_secure_cookie("session")
+                c.execute("INSERT INTO auth VALUES (?,?)",(usr,sesh))
+                print usr,": login"
+                auth.commit()
+                self.write("OK")
+                return
+            print "AUTH FAIL:",usr
+            return
         else:
-            print "UNKNOWN USER:",request.args["user"][0]
-            return ""
+            print "UNKNOWN USER:",usr
 
-class Query(Resource):
-    def render_GET(self,request):
-        global db
-        usr = auth(request.getSession().uid,request.args["key"][0])
-        if (usr):
-            c = db.cursor()
-            result = c.execute("SELECT time,label,value FROM data WHERE (user=?) ORDER BY time DESC LIMIT ?",(usr,10))
-            points = []
-            for row in result:
-                points.append({"time": row[0], "label": row[1], "value": row[2]})
-            result = c.execute("SELECT label FROM categories WHERE (user=?) ORDER BY number DESC LIMIT ?",(usr,6))
-            labels = []
-            for row in result:
-                labels.append(row[0])
-            print usr,": GETQ"
-            return json.dumps({"points": points, "labels": labels})
-        return ""
-    def render_POST(self,request):
-        global db
-        usr = auth(request.getSession().uid,request.args["key"][0])
-        if (usr):
-            label = None
-            value = None
-            try:
-                label = request.args["label"][0]
-                value = request.args["value"][0]
-            except:
-                print usr,": Malformed expression:",request.args
-                return ""
-            c = db.cursor()
-            #Insert the datapoint
-            c.execute("INSERT INTO data VALUES (?,?,?,CURRENT_TIMESTAMP)",(usr,label,value))
-            #Update the categories
-            num = c.execute("SELECT number FROM categories WHERE (user=? AND label=?)",(usr,label)).fetchone()
-            if (num):
-                c.execute("UPDATE categories SET number=?,time=CURRENT_TIMESTAMP WHERE (user=? AND label=?)",(int(num[0])+1,usr,label))
-            else:
-                c.execute("INSERT INTO categories VALUES (?,?,?,CURRENT_TIMESTAMP)",(usr,label,1))
-            c.close()
-            db.commit()
-            print usr,": add ",label,value
-            return "OK"
-        return ""
+class StaticHandler(tornado.web.RequestHandler):
+    def initialize(self, path, default_filename=None):
+        self.root = os.path.abspath(path) + os.path.sep
+        self.default_filename = default_filename
+        
+    def head(self, path):
+        self.get(path, include_body=False)
+ 
+    def get(self, path, include_body=True):
+        if os.path.sep != "/":
+            path = path.replace("/", os.path.sep)
+        abspath = os.path.abspath(os.path.join(self.root, path))
+        # os.path.abspath strips a trailing /
+        # it needs to be temporarily added back for requests to root/
+        if not (abspath + os.path.sep).startswith(self.root):
+            raise HTTPError(403, "%s is not valid", path)
+        if os.path.isdir(abspath) and self.default_filename is not None:
+            # need to look at the request.path here for when path is empty
+            # but there is some prefix to the path that was already
+            # trimmed by the routing
+            if not self.request.path.endswith("/"):
+                self.redirect(self.request.path + "/")
+                return
+            abspath = os.path.join(abspath, self.default_filename)
+        if not os.path.exists(abspath):
+            raise HTTPError(404)
+        if not os.path.isfile(abspath):
+            raise HTTPError(403, "%s is not a file", path)
+ 
+        stat_result = os.stat(abspath)
+        modified = datetime.datetime.fromtimestamp(stat_result[stat.ST_MTIME])
+ 
+        self.set_header("Last-Modified", modified)
+        self.set_header("Cache-Control", "public")
+        mime_type, encoding = mimetypes.guess_type(abspath)
+        if mime_type:
+            self.set_header("Content-Type", mime_type)
+ 
+        
+ 
+        # Check the If-Modified-Since, and don't send the result if the
+        # content has not been modified
+        ims_value = self.request.headers.get("If-Modified-Since")
+        if ims_value is not None:
+            date_tuple = email.utils.parsedate(ims_value)
+            if_since = datetime.datetime.fromtimestamp(time.mktime(date_tuple))
+            if if_since >= modified:
+                self.set_status(304)
+                return
+ 
+        if not include_body:
+            return
+        file = open(abspath, "rb")
+        try:
+            self.write(file.read())
+        finally:
+            file.close()
+            
 
-if __name__ == '__main__':
-    meDB = File('./www')
+class QuerySocket(tornado.websocket.WebSocketHandler):
+    #This method is required so that the clients can send message
+    def sendMessage(self,msg):
+        #self.write_message(json.dumps(msg))
+        pass
+        
+    #Websocket connection stuff
+    def open(self):
+        print "Socket Open"
+        
+        pass
     
-    meDB.putChild("mksession",Login())
-    meDB.putChild("q",Query())
-    s=Site(meDB)
-    s.sessionFactory = WeekSession
-    reactor.listenSSL(portnum,s ,
-                      ssl.DefaultOpenSSLContextFactory(
-            'keys/server.key', 'keys/server.crt'))
-    print "READY"
-    reactor.run()
-    db.commit()
-    print "Cleanly finished"
+    def on_message(self,msg):
+        print msg
+    def on_close(self):
+        print "socket Close"
+
+
+path= os.path.join(os.path.dirname(os.path.realpath(__file__)), 'www')
+application = tornado.web.Application([
+    ("/",MainHandler),
+    ("/login",LoginHandler),
+    ("/q", QuerySocket),
+    (r"/(.*)",StaticHandler,{"path": path})
+],cookie_secret="u5ethsg36GDTy6w5rggtb45ywrgs/=wr",login_url="/login")
+
+server = tornado.httpserver.HTTPServer(application,ssl_options = {
+    "certfile": os.path.join("keys/server.crt"),
+    "keyfile": os.path.join("keys/server.key")
+})
+
+server.listen(port)
+
+print "Server is running on port %s" % port
+try:
+    tornado.ioloop.IOLoop.instance().start()
+except KeyboardInterrupt:
+    pass
+print "\nShut Down Successfully\n"

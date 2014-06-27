@@ -50,12 +50,12 @@
             $("#password").focus();
         }
         function login() {
-            $.post("/mksession",{user: $("#username").val(), password: $("#password").val()},
+            $.post("/login",{user: $("#username").val(), password: $("#password").val()},
                 function(data) {
                     if (data.length == 0) {
                         loginFailure();
                     } else {
-                        window.location.replace("/medb.html?session="+data)
+                        window.location.replace("/");
                     }
                 });
             return false;
