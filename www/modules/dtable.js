@@ -28,10 +28,20 @@ dtable = {
                 case "data":
                     
                     tb = opt[o];
+                    
+                    //Set visible or invisible based upon amount of data
+                    if (tb.length >=1) {
+                        meDB.setLocation({i: dtable.divid, v: true})
+                    } else {
+                        meDB.setLocation({i: dtable.divid, v: false})
+                    }
+                    
                     addhtml = "";
                     for (i = 0; i < tb.length; ++i) {
-                        utctime = new Date(tb[i].time + " GMT");
+                        
+                        utctime = new Date(tb[i].time + " UTC");
                         timestring = (utctime.getMonth() + 1) + "/" + utctime.getDate() + "/" + utctime.getFullYear() + " " + utctime.getHours() + ":" + utctime.getMinutes();
+                        
                         addhtml += "<tr><td>" + timestring + "</td><td>" + tb[i].label + "</td><td>" + tb[i].value + "</td></tr>"
                     }
                     recentData_ = table_html.replace("{{ELEMENTS}}", addhtml)

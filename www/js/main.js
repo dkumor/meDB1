@@ -210,7 +210,7 @@ var meDB = {
         
         //Handling server-side messages - this needs to be done once for each connection
         meDB.connection.onmessage = function(e) {
-            meDB.receive(e.data);
+            meDB.receive(e.data,"ws");
         }
     
     },
@@ -220,19 +220,22 @@ var meDB = {
     //The following functions send relevant pieces of information to the server
     send: function(divid, data, logmsg) {
         if (!logmsg) logmsg = "";
-        meDB.log('<- "'+divid+'"  '+logmsg);
+        
         
         message = JSON.stringify({i: divid, d: data});
         
         //If the socket is connected, send using websocket. Otherwise, use POST
         if (meDB.connect_connected) {
+            meDB.log('(ws)<- "'+divid+'"  '+logmsg);
             meDB.connection.send(message);
         } else {
-            $.post(meDB.post_url,{q: message,session: meDB.sessionID},meDB.receive);
+            meDB.log('(post)<- "'+divid+'"  '+logmsg);
+            $.post(meDB.post_url,{q: message,session: meDB.sessionID},function(data) {meDB.receive(data,"post");});
         }
     },
     //The following function receives data from the server
-    receive: function(data) {
+    receive: function(data,source) {
+        if (typeof(source)==='undefined') source = '?';
         /*
                 The message protocol is actually pretty simple:
                 The websocket sends an object in json. This object
@@ -241,7 +244,7 @@ var meDB = {
         
         msg = JSON.parse(data)
         for (i in msg) {
-            meDB.log('-> "' +msg[i].i + '"');
+            meDB.log("("+source+')-> "' +msg[i].i + '"');
             if (msg[i].i=="@") meDB.setopt(msg[i].d);
             else meDB.objects[msg[i].i].setopt(msg[i].d);
         }

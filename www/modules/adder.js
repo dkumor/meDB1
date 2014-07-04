@@ -21,6 +21,7 @@ adder = {
     init: function(divid,opt) {
         adder.divid = divid;
         adder.setopt(opt);
+        meDB.setLocation({i: adder.divid, v: true})
     },
     setopt: function(opt) {
         

@@ -2,6 +2,7 @@ import sqlite3
 import os
 import sys
 import Queue
+from datetime import datetime
 from auth import *
 
 class Session():
@@ -57,9 +58,7 @@ class Session():
         
     def addObject(self,obj):
         oid =str(uuid.uuid4().hex)
-        
-        obj.setSession(oid,self)
-        
+        obj = obj(self.user,self,oid)
         self.objects[oid] = obj
         
         self.push("@",{"c":({"i": oid, "t": obj.module(),"o": obj.init()},)})
@@ -74,21 +73,35 @@ class Session():
         else:
             delSession(self.id)
         del self.sessions[self.id]
-    
+
 class User():
     users = {}
     def __init__(self,user):
         self.user = user
         self.session = []
-        self.objects = {}
+        self.obj = []
+        #Open or create database for user
+        dbname = "./db/"+getDB(self.user)+".db"
+        self.db = sqlite3.connect(dbname)
+                
         print self.user,": ACTIVE"
     def addSession(self,session):
         self.session.append(session.id)
         print self.user,":",session.id," ADD SESSION"
+        
         #Initialize stuff
+        session.addObject(dataAdder)
+        session.addObject(dataTable)
+        
+        
         
         #Start websocket to speed up talking
         #session.push("@",{"ws": True})
+        #OR, set refresh rate to 10 seconds
+        #session.push("@",{"rr": 15000})
+        
+        
+        
     def receive(self,msg,session):
         print self.user,":",session.id,
         for i in msg:
@@ -104,109 +117,37 @@ class User():
                     print "LOGOUT",
                     session.close(True)
                     self.session.remove(session.id)
-                    session.push("@",{"j":"window.location.replace('/login');"})
+                    session.send("@",{"j":"window.location.replace('/login');"})
                 else:
                     print msg[i],"??"
             else:
                 print "?",
         print "."
-        
-
-"""
-class Session():
-    sessions = {}
-    def __init__(self,sender,usr):
-        self.s = sender
-        self.id = str(uuid.uuid4().hex)
-        self.send([{"i":"@","d":{"i":self.id}}])
-        self.sessions[self.id] = self
-        if not (usr in User.users):
-            self.usr = User(usr)
-            User.users[usr] = self.usr
-        else:
-            self.usr = User.users[usr]
-        self.unum = User.users[usr].addSession(self)
-    def send(self,msg):
-        self.s.sendMessage(msg)
-    def recv(self,msg):
-        self.usr.recv(msg,self.unum)
-
-
-class dataAdder():
-    def __init__(self,usr,oid,sid):
-        self.usr = usr
-        self.oid = oid
-        self.sid = sid
-    def recv(self,msg,snum):
-        for i in msg:
-            if (i=='a'):
-                for pt in msg[i]:
-                    label = pt["l"]
-                    value = pt["v"]
-                    self.usr.addData(label,value,"","web")
-                self.usr.put(self.oid,self.init(),snum)
-                
-            print i,msg[i]
-    def getTopCategories(self):
-        labels = []
-        c = self.usr.db.cursor()
-        result = c.execute("SELECT label FROM data_categories ORDER BY number DESC LIMIT ?",(6,))
-        for row in result:
-            labels.append(row[0])
-        return labels
-    def init(self):
-        return {"labels":self.getTopCategories()}
-    def type(self):
-        return "adder"
     
-class dataTable():
-    def __init__(self,usr,oid,sid):
+    
+class db_data(object):
+    db_data_obj = []
+    
+    def __init__(self,usr,session,oid):
         self.usr = usr
-        self.oid = oid
-        self.sid = sid
-        self.usr.registerAdd(self.oid)
-    def recv(self,msg):
-        print "TBLDATA"
-        for i in msg:
-            print i,msg[i]
-    def getData(self):
-        c = self.usr.db.cursor()
-        result = c.execute("SELECT time,label,value FROM data ORDER BY time DESC LIMIT ?",(10,))
-        points = []
-        for row in result:
-            points.append({"time": row[0], "label": row[1], "value": row[2]})
-        return points
-    def init(self):
-        print "INIT"
-        return {"data":self.getData()}
-    def type(self):
-        return "dtable"
-    def event(self,typ):
-        if (typ=="add"):
-            
-            
+        self.id = oid
+        self.session = session
+        self.db = self.usr.db
+        self.db_data_obj.append(self)
         
-class User():
-    users = {}
-    def __init__(self,usr):
-        self.user = usr
-        self.sessions = []
-        self.objects = {}
-        self.ordering = []
-        self.initDB()
-        
-        self.addObject(dataAdder)
-        self.addObject(dataTable)
-    def registedAdd(self,oid)
-    def addObject(self,clas):
-        oid =str(uuid.uuid4().hex)
-        i = clas(self,oid)
-        self.objects[oid] = i
-        self.ordering.append(oid)
-        
-    def addData(self,label,value,notes,source=""):
         c = self.db.cursor()
-        c.execute("INSERT INTO data VALUES (?,?,?,?,CURRENT_TIMESTAMP)",(label,value,source,notes))
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='data';")
+        if (c.fetchone()==None):
+            c.execute("CREATE TABLE data (label text, value text, source text, notes text, time text)")
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='data_categories';")
+        if (c.fetchone()==None):
+            c.execute("CREATE TABLE data_categories (label text, number integer, type text)")
+        self.db.commit()
+    def db_data_add(self,label,value,notes="",source="",time=None):
+        if (time==None):
+            time = datetime.utcnow()
+        c = self.db.cursor()
+        c.execute("INSERT INTO data VALUES (?,?,?,?,?)",(label,value,source,notes,time))
         #Update the categories
         num = c.execute("SELECT number FROM data_categories WHERE (label=?)",(label,)).fetchone()
         if (num):
@@ -215,77 +156,68 @@ class User():
             c.execute("INSERT INTO data_categories VALUES (?,?,'')",(label,1))
         self.db.commit()
         c.close()
-        print self.user,": add(\""+label,"\",\""+value+"\")"
+        print self.usr.user,": add(\""+label,"\",\""+value+"\")"
+        self.db_data_update()
         
-        
-    def initDB(self):
-        #Open or create database for user
-        dbname = "./db/"+getDB(self.user)+".db"
-        
-        try:
-            self.db = open(dbname,'r')
-            self.db.close()
-            self.db = sqlite3.connect(dbname)
-        except:
-            print self.user,": Make Database"
-            self.db = sqlite3.connect(dbname)
-            cur = self.db.cursor()
-            cur.execute("CREATE TABLE data (label text, value text, source text, notes text, time text)")
-            cur.execute("CREATE TABLE data_categories (label text, number integer, type text)")
-            cur.execute("CREATE TABLE ratings (label text, value integer, notes text, time text)")
-            cur.execute("CREATE TABLE ratings_categories (label text, number integer)")
-            self.db.commit()
-            cur.close()
-         
+    def db_data_get(self,num=10):
+        c = self.db.cursor()
+        result = c.execute("SELECT time,label,value,notes,source FROM data ORDER BY time DESC LIMIT ?",(num,))
+        points = []
+        for row in result:
+            points.append({"time": row[0], "label": row[1], "value": row[2],"notes":row[3],"source":row[4]})
+        return points
+    def db_data_getCategories(self,num=5):
+        labels = []
+        c = self.db.cursor()
+        result = c.execute("SELECT label FROM data_categories ORDER BY number DESC LIMIT ?",(num,))
+        for row in result:
+            labels.append(row[0])
+        return labels
+    def db_data_update(self):
+        for i in self.db_data_obj:
+            i.db_data_updated()
+    def db_data_updated(self):
+        pass
     
-    def addSession(self,s):
-        self.sessions.append(s)
-        print self.user,":",len(self.sessions),"session(s) (ADD)"
+    def __del__(self):
+        self.db_data_obj.remove(self)
         
-        return len(self.sessions)-1
-    def remSession(self,s):
-        self.sessions.remove(s)
-        print self.user,":",len(self.sessions),"session(s) (REM)"
-    def send(self,msg,snum):
-        self.sessions[snum].send(msg)
-        print msg
-    def put(self,oid,msg,snum):
-        self.sessions[snum].send([{"i": oid,"d":msg}])
-    def recv(self,msg,snum):
-        print self.user,":",
-        #try:
-        if (msg["i"]=="@"):
-            d = msg["d"]
-            for i in d:
-            
-                if ('h'==i):
-                    print "h",
-                elif ('r'==i):
-                    print "r",
-                elif ('u'==i):
-                    print "u",
-                elif ('d'==i):
-                    print "d",
-                elif ('i'==i):
-                    print "i",
-                    if (d[i]==""):
-                        #If the id is an empty string, initialize the contents
-                        initializer= []
-                        for i in range(len(self.ordering)):
-                            o = self.objects[self.ordering[i]]
-                            initializer.append({"i": self.ordering[i], "t": o.type(), "o": o.init(),"l": {"i": self.ordering[i],"a": "","v": True}})
-                        self.send([{"i":"@","d":{"c":initializer}}],snum)
-                elif ('f'==i):
-                    print 'f',
-                else:
-                    print i+"?",
+class dataTable(db_data):
+        
+    def receive(self,msg):
+        print "TBLDATA",msg
+        
+    
+    def init(self):
+        return {"data": self.db_data_get()}
+        
+    def module(self):
+        return "dtable"
+    def db_data_updated(self):
+        self.session.send(self.id,{"data":self.db_data_get()})
+
+
+class dataAdder(db_data):
+    def receive(self,msg):
+        for i in msg:
+            if (i=='a'):
+                for pt in msg[i]:
+                    label = pt["l"]
+                    value = pt["v"]
+                    notes = ""
+                    if ("n" in pt):
+                        notes = pt["n"]
+                    t = None
+                    if ("t" in pt):
+                        t = pt["t"]
+                    self.db_data_add(label,value,notes,"web",t)
                 
-        else:
-            if msg["i"] in self.objects:
-                ret = self.objects[msg["i"]].recv(msg["d"],snum)
-                if (ret!=None):
-                    self.send({"i": msg.i,"d": ret},snum)
-        print "."
-        #except:
-        #    print "ERROR:",msg
-"""
+            print i,msg[i]
+    def init(self):
+        return {"labels":self.db_data_getCategories(6)}
+    def module(self):
+        return "adder"
+    def db_data_updated(self):
+        self.session.send(self.id,{"labels":self.db_data_getCategories(6)})
+            
+
