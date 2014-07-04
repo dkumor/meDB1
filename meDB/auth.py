@@ -1,7 +1,6 @@
 import sqlite3
 import uuid
 import hashlib
-isTesting = False
 auth = None
 auth_loc = './db/auth.db'
 try:
@@ -45,8 +44,6 @@ def addUser(user,pwd):
     db.commit()
     
 def authUser(sesh):
-    if (isTesting):
-        return "daniel@dkumor.com"
     global auth
     if (sesh):
         c = auth.cursor()
@@ -58,8 +55,6 @@ def authUser(sesh):
     return None
 
 def hasSession(sesh,sid):
-    if (isTesting):
-        return "daniel@dkumor.com"
     global auth
     if (sesh and sid):
         c = auth.cursor()

@@ -102,7 +102,7 @@ class LoginHandler(BaseHandler):
         usr = self.get_argument("user")
         pwd = self.get_argument("password")
         keepalive = self.get_argument("keepalive")
-        print usr,pwd,keepalive
+        
         if (checkUser(usr,pwd)):
             #Auth successful, create a session for the user
             skey = makeSession(usr,self.get_secure_cookie("session"),keepalive)
