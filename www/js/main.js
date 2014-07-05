@@ -105,8 +105,7 @@ var meDB = {
         //Add the div to the end of the page
         $("#pg").append(element);
         require([ module ],function(mod) {
-            meDB.objects[divid]=mod;
-            mod.init(divid,opt);
+            meDB.objects[divid]=new mod(divid,opt);
         });
     },
     //This deletes a box of content
@@ -514,6 +513,17 @@ var meDB = {
         return results[1];
     },
     
+}
+
+
+function loadCss(url) {
+    //First, check if a link to the CSS given already exists
+    //TODO
+    var link = document.createElement("link");
+    link.type = "text/css";
+    link.rel = "stylesheet";
+    link.href = url;
+    document.getElementsByTagName("head")[0].appendChild(link);
 }
 
 meDB.init();
