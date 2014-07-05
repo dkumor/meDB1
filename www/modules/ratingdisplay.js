@@ -44,6 +44,12 @@ define([],function() { return function(divid,initopt) {
         }
         totalhtml += "</table>";
          $("#"+divid+" .pg").html(totalhtml);
+        //Set visible or invisible based upon amount of data
+        if (this.ratings.length >=1) {
+            meDB.setLocation({i: divid, v: true})
+        } else {
+            meDB.setLocation({i: divid, v: false})
+        }
     };
     
     //Here we define the necessary functions
@@ -65,5 +71,5 @@ define([],function() { return function(divid,initopt) {
         }
     };
     this.setopt(initopt)
-    meDB.setLocation({i: divid, v: true})
+    
 };});
