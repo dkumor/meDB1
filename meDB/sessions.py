@@ -7,6 +7,8 @@ from auth import *
 
 from module_data import *
 from module_ratings import *
+from module_location import *
+
 class Session():
     sessions = {}
     
@@ -101,7 +103,7 @@ class User():
         session.addObject(dataTable)
         session.addObject(ratingTable)
         session.addObject(ratingCreator)
-        
+        session.addObject(locator)
         
         
         #Start websocket to speed up talking
