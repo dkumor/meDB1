@@ -19,7 +19,7 @@ except:
     cur.execute('CREATE TABLE sessions (user text, session text,keepalive integer)')
     
      #Create the user DANIEL
-    cur.execute("INSERT INTO users VALUES ('daniel@dkumor.com','675ed75f53f30ccc543a204182fe847daf1b8d51fe205341d5d43ad156d7427c9ee77466a12bd61fc7ae4bce7e79e7696f5b7f9ad28b665408277076c20a9beb','f9c16b026cd5404cb8ee78bfd4146736','188acfa4c30242b881cadd7006ea47f8')")
+    cur.execute("INSERT INTO users VALUES ('daniel@gmail.com',79e7696f5b7f9ad28b665408277076c20a9beb','f9c16b026cd5404cb8ee7fd4146736','188acfa4c342b881cadd7006ea47f8')")
     
     
     auth.commit()
